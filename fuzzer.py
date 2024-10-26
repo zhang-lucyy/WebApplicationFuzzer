@@ -4,7 +4,7 @@ import mechanicalsoup
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Fuzzer")
     parser.add_argument("command", choices=['discover'])
-    parser.add_argument("url" type=str)
+    parser.add_argument("url", type=str)
     parser.add_argument("--custom-auth", type=str)
     return parser.parse_args()
 
