@@ -8,6 +8,7 @@ before_script:
   - service mysql start
   - echo '[+] Starting apache'
   - service apache2 start
+  - pip3 install MechanicalSoup
 fuzzrunner:
   script:
     # here is where you can write your commands to run your fuzzer or any custom setup commands
@@ -18,6 +19,6 @@ fuzzrunner:
     - cat /badchars.txt
     # An example fuzzer command. Note the url is DIFFERENT than XAMPP example (no /dvwa).
     # Remove whatever you need to.
-    - python3 fuzz.py discover http://localhost/ --custom-auth=dvwa
-    - python3 fuzz.py discover http://127.0.0.1/fuzzer-tests
+    - python3 fuzzer.py discover http://localhost/ --custom-auth=dvwa
+    - python3 fuzzer.py discover http://127.0.0.1/fuzzer-tests
   stage: test
