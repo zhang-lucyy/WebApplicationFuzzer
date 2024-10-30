@@ -29,7 +29,7 @@ def dvwa_auth(url):
     # Set security level to Low
     browser.open(url + "/security.php")
     browser.follow_link("security.php")
-    browser.select_form('form[action="security.php"]')
+    browser.select_form('form[action="#"]')
     browser["security"] = "low"
     browser.submit_selected()
     
