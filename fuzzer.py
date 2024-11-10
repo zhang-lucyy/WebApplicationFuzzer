@@ -86,7 +86,7 @@ def main():
     
     if args.command == "discover":
         if args.custom_auth == "dvwa":
-            browser = dvwa_auth(args.url, browser)
+            dvwa_auth(args.url, browser)
             guess(args.url, browser, args)
 
 if __name__ == "__main__":
