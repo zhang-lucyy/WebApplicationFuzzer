@@ -1,21 +1,14 @@
 import argparse
 import mechanicalsoup
-
-# correctly guessed unlinked pages
-global pages_guessed
-
-# 
-global visited
-
-
+import urllib
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Fuzzer")
     parser.add_argument("command", choices=['discover'])
     parser.add_argument("url", type=str)
     parser.add_argument("--custom-auth", type=str)
-    parser.add_argument("--common-words", type=str)
-    parser.add_argument("--extensions", type=str)
+    parser.add_argument("--common-words", type=argparse.FileType('r'))
+    parser.add_argument("--extensions", type=argparse.FileType('r'))
     return parser.parse_args()
 
 def dvwa_auth(url, browser):
@@ -47,54 +40,69 @@ Uses the common word list to discover potentially unlinked pages by attempting
 every combination of word and extension.
 '''
 def guess(url, browser, args):
-    if args.common_words and args.extensions:
-        browser.open(url)
-        words = args.common_words
-        exts = args.extensions
+    browser.open(url)
+    words = args.common_words.read().split("\n")
+    exts = args.extensions.read().split("\n")
 
-        # try every word / extension combo
-        for word in words:
-            for ext in exts:
-                page = browser.open(url + "/" + word + "." + ext)
-                # link discovered
-                if (page.status_code == 200):
-                    # add link to guessed pages set to keep track
-                    pages_guessed.add(url + "/" + word + "." + ext)
+    # try every word / extension combo
+    for word in words:
+        for ext in exts:
+            link = url + word + "." + ext
+            page = browser.open(link)
+            # link discovered
+            if (page.status_code == 200):
+                # add link to guessed pages set to keep track
+                pages_guessed.add(link)
 
 
 '''
 Discovers pages on the site by finding links and visiting them.
 '''
-def crawl(url, browser, args):
-    url = browser.absolute_url(url)
-    page = browser.open(url)
-    if page is not None:
-        visited.add(url)
+def crawl(url, browser, visited):
+    # Use a queue (iterative approach) to prevent deep recursion
+    to_visit = [url]
+    visited.add(url)
 
-    for link in browser.links():
-        href = link["href"]
-        # skip links that have already been visited or the same page or logout
-        if (href == "logout.php" or href in visited or href == url): continue
-        crawl(href)
+    while to_visit:
+        current_url = to_visit.pop()
+        browser.open(current_url)
+
+        for link in browser.page.select('a'):
+            href = link.get("href")
+            # Create absolute URL
+            absolute_url = urllib.parse.urljoin(current_url, href)
+            
+            # Skip already visited, logout, or invalid links
+            if absolute_url in visited or 'logout' in absolute_url:
+                continue
+            
+            visited.add(absolute_url)
+            to_visit.append(absolute_url)
 
 
-def discover(url):
-    guess(url)
-    print("Pages Guessed")
-    print("*" * 15)
-    for link in pages_guessed:
-        print(link)
+def discover(url, browser, args):
+    # correctly guessed unlinked pages
+    global pages_guessed
+    global visited
+    pages_guessed = set()
+    visited = set()
 
-    crawl(url)
+    # guess the pages if a common words list and extensions list is given
+    if args.common_words and args.extensions:
+        guess(url, browser, args)
+        print("Pages Successfully Guessed")
+        print("*" * 30)
+        for link in pages_guessed:
+            print(link)
+
+    crawl(url, browser, visited)
     print("Links Discovered")
-    print("*" * 15)
+    print("*" * 30)
     for link in visited:
         print(link)
     
 
 def main():
-    pages_guessed = set()
-    vistited = set()
 
     args = parse_arguments()
     # create browser object
@@ -104,7 +112,7 @@ def main():
     if args.custom_auth == "dvwa":
         dvwa_auth(args.url, browser)
     if args.command == "discover":
-        guess(args.url, browser, args)
+        discover(args.url, browser, args)
 
 if __name__ == "__main__":
     main()
