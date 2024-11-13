@@ -70,13 +70,11 @@ def crawl(url, base_url, browser, visited):
         # make sure link does not go off site and skip logout link
         if (urllib.parse.urlparse(href).scheme != 'http' and urllib.parse.urlparse(href).scheme != 'https' and 'logout' not in href.lower()):
             current_link = base_url + href
-
             # add link if not already visited
             if (current_link not in visited):
-                visited.add(current_link)
-                
                 page = browser.open(current_link)
-                if page.status_code == 200:
+                if (page.status_code == 200):
+                    visited.add(current_link)
                     crawl(current_link, base_url, browser, visited)
             
 
@@ -111,7 +109,7 @@ def discover(url, browser, args):
 
 def main():
     args = parse_arguments()
-    
+
     # create browser object
     browser = mechanicalsoup.StatefulBrowser()
     

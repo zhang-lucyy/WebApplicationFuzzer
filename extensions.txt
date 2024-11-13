@@ -1,0 +1,11 @@
+php
+txt
+html
+jsp
+js
+csv
+css
+jpg
+png
+json
+xml
