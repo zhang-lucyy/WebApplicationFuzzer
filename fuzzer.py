@@ -11,6 +11,9 @@ def parse_arguments():
     parser.add_argument('--extensions', type=argparse.FileType('r'))
     return parser.parse_args()
 
+'''
+Logs into DVWA.
+'''
 def dvwa_auth(url, browser):
     # Go to setup.php and reset the database
     browser.open(url + '/setup.php')
@@ -40,7 +43,11 @@ Uses the common word list to discover potentially unlinked pages by attempting
 every combination of word and extension.
 '''
 def guess(url, browser, args):
+    # correctly guessed unlinked pages
+    pages_guessed = set()
+
     browser.open(url)
+    # read the word and extensions files
     words = args.common_words.read().split('\n')
     exts = args.extensions.read().split('\n')
 
@@ -53,6 +60,7 @@ def guess(url, browser, args):
             if (page.status_code == 200):
                 # add link to guessed pages set to keep track
                 pages_guessed.add(link)
+    return pages_guessed
 
 '''
 Discovers pages on the site by finding links and visiting them.
@@ -76,13 +84,41 @@ def crawl(url, base_url, browser, visited):
                 if (page.status_code == 200):
                     visited.add(current_link)
                     crawl(current_link, base_url, browser, visited)
+
+'''
+Attempts to discover every possible input fields to forms for each page.
+'''
+def form_parameters(browser):
+    # form inputs for ALL links
+    form_inputs = []
+
+    for link in visited:
+        browser.open(link)
+        page_title = browser.page.find('title')
+        inputs = browser.page.find_all(['input', 'textarea'])
+        # list of all inputs for ONE page specifically
+        input_list = []
+        for input in inputs:
+            # gets ALL input fields to a form, skipping buttons/submits
+            if (input.get('type') not in ['button', 'submit']):
+                name = input.get('name')
+                value = input.get('value')
+                dict = {
+                    'title': page_title,
+                    'name': name,
+                    'value': value,
+                }
+                input_list.append(dict)
+        if (len(input_list) > 0):
+            form_inputs.append(input_list)
+    
+    return form_inputs
             
-
+'''
+Discovers as many potential inputs to the system as possible including page 
+discovery and input discovery.
+'''
 def discover(url, browser, args):
-    # correctly guessed unlinked pages
-    global pages_guessed
-    pages_guessed = set()
-
     # links crawled
     global visited
     visited = set()
@@ -93,19 +129,44 @@ def discover(url, browser, args):
 
     # guess the pages if a common words list and extensions list is given
     if args.common_words and args.extensions:
-        guess(url, browser, args)
-        print('Pages Successfully Guessed')
+        pages_guessed = guess(url, browser, args)
+        print('Pages Successfully Guessed:')
         print('*' * 40)
         for link in pages_guessed:
             print(link)
 
     # link crawling
     crawl(url, base_url, browser, visited)
-    print('Links Discovered')
+    print('Links Discovered:')
     print('*' * 40)
     for link in visited:
         print(link)
-    
+
+    # parse URLs
+    print('Parsed URLs:')
+    print('*' * 40)
+    for link in visited:
+        if ('?' in link):
+            parse = link.split('?')
+            print(parse)
+        else:
+            print([link])
+    print('*' * 40)
+
+    # form inputs
+    form_params = form_parameters(browser)
+    for param in form_params:
+        title = (param[0]['title']).string
+        print('Page: ' + str(title))
+        print('*' * 40)
+        print('Form Inputs:')
+        print('************')
+        print(f"{'Name:' : <30}{'Value:' : ^10}")
+        for dict in param:
+            name = str(dict['name'])
+            value = str(dict['value'])
+            print(f'{name : <30}{value : ^10}')
+        print('*' * 40)
 
 def main():
     args = parse_arguments()
