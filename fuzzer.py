@@ -1,13 +1,13 @@
 import argparse
 import mechanicalsoup
-import urllib.parse
+from urllib.parse import urljoin, urlparse
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Fuzzer')
     parser.add_argument('command', choices=['discover'])
     parser.add_argument('url', type=str)
     parser.add_argument('--custom-auth', type=str)
-    parser.add_argument('--common-words', type=argparse.FileType('r'))
+    parser.add_argument('--common-words', type=argparse.FileType('r'), required=True)
     parser.add_argument('--extensions', type=argparse.FileType('r'))
     return parser.parse_args()
 
@@ -44,46 +44,53 @@ every combination of word and extension.
 '''
 def guess(url, browser, args):
     # correctly guessed unlinked pages
+    global pages_guessed 
     pages_guessed = set()
 
     browser.open(url)
     # read the word and extensions files
     words = args.common_words.read().split('\n')
-    exts = args.extensions.read().split('\n')
+
+    # default to php and empty string if extensions file is not specified
+    if args.extensions:
+        exts = args.extensions.read().split('\n')
+    else:
+        exts = ['.php', ''] # default
 
     # try every word / extension combo
     for word in words:
         for ext in exts:
-            link = url + word + '.' + ext
+            link = url + word + ext
             page = browser.open(link)
             # link discovered
             if (page.status_code == 200):
                 # add link to guessed pages set to keep track
                 pages_guessed.add(link)
-    return pages_guessed
 
 '''
 Discovers pages on the site by finding links and visiting them.
 '''
 def crawl(url, base_url, browser, visited):
-    if url in visited or 'logout' in url.lower():
+    try:
+        page = browser.open(url)
+
+        if page.status_code == 200 and browser.page:
+            # Process each link on the page
+            for link in browser.page.select('a'):
+                href = link.get('href')
+                
+                # make sure link does not go off site and skip logout link
+                if href and (urlparse(href).scheme not in ('http', 'https') and 'logout' not in href.lower()):
+                    current_link = urljoin(base_url, href)
+                    # add link if not already visited
+                    if (current_link not in visited):
+                        page = browser.open(current_link)
+                        if (page.status_code == 200):
+                            visited.add(current_link)
+                            crawl(current_link, base_url, browser, visited)
+    except:
         return
-        
-    # Try to open the page
-    browser.open(url)
-    
-    # Process each link on the page
-    for link in browser.page.select('a'):
-        href = link.get('href')
-        # make sure link does not go off site and skip logout link
-        if (urllib.parse.urlparse(href).scheme != 'http' and urllib.parse.urlparse(href).scheme != 'https' and 'logout' not in href.lower()):
-            current_link = base_url + href
-            # add link if not already visited
-            if (current_link not in visited):
-                page = browser.open(current_link)
-                if (page.status_code == 200):
-                    visited.add(current_link)
-                    crawl(current_link, base_url, browser, visited)
+
 
 '''
 Attempts to discover every possible input fields to forms for each page.
@@ -94,23 +101,25 @@ def form_parameters(browser):
 
     for link in visited:
         browser.open(link)
-        page_title = browser.page.find('title')
-        inputs = browser.page.find_all(['input', 'textarea'])
-        # list of all inputs for ONE page specifically
-        input_list = []
-        for input in inputs:
-            # gets ALL input fields to a form, skipping buttons/submits
-            if (input.get('type') not in ['button', 'submit']):
-                name = input.get('name')
-                value = input.get('value')
-                dict = {
-                    'title': page_title,
-                    'name': name,
-                    'value': value,
-                }
-                input_list.append(dict)
-        if (len(input_list) > 0):
-            form_inputs.append(input_list)
+        if browser.page is not None:
+            page_title = browser.page.find('title')
+            inputs = browser.page.find_all(['input', 'textarea'])
+
+            # list of all inputs for ONE page specifically
+            input_list = []
+            for input in inputs:
+                # gets ALL input fields to a form, skipping buttons/submits
+                if (input.get('type') not in ['button', 'submit']):
+                    name = input.get('name')
+                    value = input.get('value')
+                    dict = {
+                        'title': page_title,
+                        'name': name,
+                        'value': value,
+                    }
+                    input_list.append(dict)
+            if (len(input_list) > 0):
+                form_inputs.append(input_list)
     
     return form_inputs
             
@@ -127,21 +136,29 @@ def discover(url, browser, args):
     global base_url
     base_url = url
 
-    # guess the pages if a common words list and extensions list is given
-    if args.common_words and args.extensions:
-        pages_guessed = guess(url, browser, args)
-        print('Pages Successfully Guessed:')
-        print('*' * 40)
-        for link in pages_guessed:
-            print(link)
+    # page discovery
+    guess(url, browser, args)
+    print('Pages Successfully Guessed:')
+    print('*' * 40)
+    for link in pages_guessed:
+        print(link)
 
-    # link crawling
+    # link crawling from initial url
     crawl(url, base_url, browser, visited)
+
+    # link crawling from pages guessed
+    for page in pages_guessed:
+        if page not in visited:
+            visited.add(page)
+            crawl(page, base_url, browser, visited)
+
+    # print all crawled links
     print('Links Discovered:')
     print('*' * 40)
     for link in visited:
         print(link)
 
+    # input discovery
     # parse URLs
     print('Parsed URLs:')
     print('*' * 40)
@@ -167,6 +184,14 @@ def discover(url, browser, args):
             value = str(dict['value'])
             print(f'{name : <30}{value : ^10}')
         print('*' * 40)
+
+    # Cookies
+    print('Cookies:')
+    print('*' * 40)
+    cookies = browser.get_cookiejar()
+    for cookie in cookies:
+        print(cookie)
+    print('*' * 40)
 
 def main():
     args = parse_arguments()

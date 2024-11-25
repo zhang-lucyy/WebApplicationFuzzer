@@ -20,5 +20,5 @@ fuzzrunner:
     # An example fuzzer command. Note the url is DIFFERENT than XAMPP example (no /dvwa).
     # Remove whatever you need to.
     - python3 fuzzer.py discover http://localhost/ --custom-auth=dvwa --common-words=words.txt --extensions=extensions.txt
-    - python3 fuzzer.py discover http://127.0.0.1/fuzzer-tests
+    - python3 fuzzer.py discover http://127.0.0.1/fuzzer-tests/ --common-words=words.txt
   stage: test
