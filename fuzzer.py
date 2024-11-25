@@ -178,11 +178,11 @@ def discover(url, browser, args):
         print('*' * 40)
         print('Form Inputs:')
         print('************')
-        print(f"{'Name:' : <30}{'Value:' : ^10}")
+        print("{:<30}{:^10}".format('Name:', 'Value:'))
         for dict in param:
             name = str(dict['name'])
             value = str(dict['value'])
-            print(f'{name : <30}{value : ^10}')
+            print("{:<30}{:^10}".format(name, value))
         print('*' * 40)
 
     # Cookies
