@@ -287,7 +287,7 @@ def test(args, browser):
 
                     # check for http errors
                     if page.status_code != 200:
-                        http_errors.add((url, page.status_code, get_status_code(page.status_code)))
+                        http_errors.add((url, str(page.status_code), get_status_code(page.status_code)))
 
                     # check for sensitive data
                     for data in sensitive:
@@ -365,7 +365,7 @@ def test(args, browser):
             print('None')
     else:
         for tuple in http_errors:
-            print(str(tuple[1] + ' => ' + tuple[2] + ' for ' + tuple[0]))
+            print(tuple[1] + ' => ' + tuple[2] + ' for ' + tuple[0])
         print('Total: ' + str(len(http_errors)))
 
 def main():
