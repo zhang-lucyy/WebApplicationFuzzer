@@ -283,7 +283,7 @@ def test(args, browser):
                     # check for delayed responses
                     if page.elapsed.total_seconds() * 1000 > float(slow) and url not in processed:
                         delayed.add((url, str(page.elapsed.total_seconds())))
-                        processed.add(page.url)
+                        processed.add(url)
 
                     # check for http errors
                     if page.status_code != 200:
@@ -312,24 +312,24 @@ def test(args, browser):
 
             if page is not None:
                 # check for delayed responses
-                if page.elapsed.total_seconds() * 1000 > float(slow) and page.url not in processed:
-                    delayed.add((page.url, str(page.elapsed.total_seconds())))
-                    processed.add(page.url)
+                if page.elapsed.total_seconds() * 1000 > float(slow) and link not in processed:
+                    delayed.add((link, str(page.elapsed.total_seconds())))
+                    processed.add(link)
 
                 # check for http errors
                 if page.status_code != 200:
-                    http_errors.add((page.url, str(page.status_code), get_status_code(page.status_code)))
+                    http_errors.add((link, str(page.status_code), get_status_code(page.status_code)))
 
                 # check for sensitive data
                 for data in sensitive:
                     if data in page.text:
-                        sensitive_leak.add((page.url, data))
+                        sensitive_leak.add((link, data))
 
                 # check for sanitization
                 if '?' in link:
                     for char in sanitized:
                         if char in page.text and param not in tested:
-                            unsanitized.add((page.url, param))
+                            unsanitized.add((link, param))
                             tested.add(param)
     
     print('Lacks Sanitization:')
@@ -365,7 +365,7 @@ def test(args, browser):
             print('None')
     else:
         for tuple in http_errors:
-            print(tuple[1] + ' => ' + tuple[2] + ' for ' + tuple[0])
+            print(str(tuple[1] + ' => ' + tuple[2] + ' for ' + tuple[0]))
         print('Total: ' + str(len(http_errors)))
 
 def main():
