@@ -1,14 +1,21 @@
 import argparse
 import mechanicalsoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
+'''
+Declares the parameters for the Web Application Fuzzer.
+'''
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Fuzzer')
-    parser.add_argument('command', choices=['discover'])
+    parser.add_argument('command', choices=['discover', 'test'])
     parser.add_argument('url', type=str)
     parser.add_argument('--custom-auth', type=str)
     parser.add_argument('--common-words', type=argparse.FileType('r'), required=True)
     parser.add_argument('--extensions', type=argparse.FileType('r'))
+    parser.add_argument('--vectors', type=argparse.FileType('r'), required=True)
+    parser.add_argument('--sanitized_chars', type=argparse.FileType('r'))
+    parser.add_argument('--sensitive', type=argparse.FileType('r'), required=True)
+    parser.add_argument('--slow', type=int, default=500)
     return parser.parse_args()
 
 '''
@@ -40,7 +47,7 @@ def dvwa_auth(url, browser):
     
 '''
 Uses the common word list to discover potentially unlinked pages by attempting
-every combination of word and extension.
+every combination of word and extension. Part of Fuzzer Discover.
 '''
 def guess(url, browser, args):
     # correctly guessed unlinked pages
@@ -69,6 +76,7 @@ def guess(url, browser, args):
 
 '''
 Discovers pages on the site by finding links and visiting them.
+Part of Fuzzer Discover.
 '''
 def crawl(url, base_url, browser, visited):
     try:
@@ -94,6 +102,7 @@ def crawl(url, base_url, browser, visited):
 
 '''
 Attempts to discover every possible input fields to forms for each page.
+Part of Fuzzer Discover.
 '''
 def form_parameters(browser):
     # form inputs for ALL links
@@ -112,15 +121,18 @@ def form_parameters(browser):
                 if (input.get('type') not in ['button', 'submit']):
                     name = input.get('name')
                     value = input.get('value')
+                    type = input.get('type')
                     dict = {
                         'title': page_title,
                         'name': name,
                         'value': value,
+                        'type': type,
+                        'url': link
                     }
                     input_list.append(dict)
             if (len(input_list) > 0):
                 form_inputs.append(input_list)
-    
+        
     return form_inputs
             
 '''
@@ -136,6 +148,7 @@ def discover(url, browser, args):
     global base_url
     base_url = url
 
+    print('----------DISCOVER----------')
     # page discovery
     guess(url, browser, args)
     print('Pages Successfully Guessed:')
@@ -193,6 +206,168 @@ def discover(url, browser, args):
         print(cookie)
     print('*' * 40)
 
+'''
+Given the status code of a request, it translates the code to be human readable.
+'''
+def get_status_code(code):
+    if code == 200:
+        return 'Success (OK)'
+    elif code == 301:
+        return 'Moved Permanently'
+    elif code == 302:
+        return 'Found (Redirect)'
+    elif code == 303:
+        return 'See Other (Redirect)'
+    elif code == 400:
+        return 'Bad Request'
+    elif code == 401:
+        return 'Unauthorized'
+    elif code == 403:
+        return 'Forbidden'
+    elif code == 404:
+        return 'Not Found'
+    elif code >= 500 and code <= 599:
+        return 'Server Error'
+    else:
+        return 'Unknown'
+    
+'''
+Testing with a list of fuzz vectors to determine if there are any errors in the outcome
+which includes lack of sanitization, sensitive data leaks, delayed responses, or http response codes.
+'''
+def test(args, browser):
+    print('----------TESTING----------')
+    print('May take a bit if lots of inputs to test...hang in there...')
+    vectors = args.vectors.read().split('\n')
+
+    # if a sanitized file is provided
+    if args.sanitized_chars:
+        sanitized = args.sanitized_chars.read().split('\n')
+    else:
+        sanitized = ['<', '>'] # default
+
+    sensitive = args.sensitive.read().split('\n')
+
+    slow = args.slow
+
+    # num of unsanitizied inputs
+    unsanitized = set()
+    # num of possible senesitve data leakages
+    sensitive_leak = set()
+    # num of possible dos vulnerabilities
+    delayed = set()
+    # num of http/response code errors
+    http_errors = set()
+    # ensures that if an input is already declared unsanitized, it won't test again 
+    tested = set()
+    # ensures that no duplicate links are tested
+    processed = set()
+
+    form_inputs = form_parameters(browser)
+
+    # iterates over form inputs
+    for page_inputs in form_inputs:
+        for input in page_inputs:   # iterate over all the dicts of inputs
+            name = input['name']
+            url = input['url']
+
+            if (input['type'] == 'file'):
+                continue
+            else:
+                for vector in vectors:
+                    browser.open(url)
+                    browser.select_form('form')
+                    browser[name] = vector
+                    page = browser.submit_selected()
+
+                    # check for delayed responses
+                    if page.elapsed.total_seconds() * 1000 > float(slow) and url not in processed:
+                        delayed.add((url, str(page.elapsed.total_seconds())))
+                        processed.add(page.url)
+
+                    # check for http errors
+                    if page.status_code != 200:
+                        http_errors.add((url, page.status_code, get_status_code(page.status_code)))
+
+                    # check for sensitive data
+                    for data in sensitive:
+                        if data in page.text:
+                            sensitive_leak.add((url, data))
+
+                    # check for sanitization
+                    for char in sanitized:
+                        if char in page.text and name not in tested:
+                            unsanitized.add((url, name))
+                            tested.add(name)
+
+    # checking for pages that don't have any inputs
+    for link in visited:
+        for vector in vectors:
+            if '?' in link:  # inputs that are discoverable via url parsing
+                base_url, query = link.split('?', 1)
+                param, value = query.split('=', 1)
+                link = base_url + '?' + param + '=' + vector
+
+            page = browser.open(link)
+
+            if page is not None:
+                # check for delayed responses
+                if page.elapsed.total_seconds() * 1000 > float(slow) and page.url not in processed:
+                    delayed.add((page.url, str(page.elapsed.total_seconds())))
+                    processed.add(page.url)
+
+                # check for http errors
+                if page.status_code != 200:
+                    http_errors.add((page.url, page.status_code, get_status_code(page.status_code)))
+
+                # check for sensitive data
+                for data in sensitive:
+                    if data in page.text:
+                        sensitive_leak.add((page.url, data))
+
+                # check for sanitization
+                if '?' in link:
+                    for char in sanitized:
+                        if char in page.text and param not in tested:
+                            unsanitized.add((page.url, param))
+                            tested.add(param)
+    
+    print('Lacks Sanitization:')
+    print('*' * 40)
+    if (len(unsanitized) == 0):
+        print('None')
+    else:
+        for tuple in unsanitized:
+            print('Page: ' + tuple[0] + ' - Input: ' + tuple[1])
+        print('Total: ' + str(len(unsanitized)))
+
+    print('Sensitive Data Leaks:')
+    print('*' * 40)
+    if (len(sensitive_leak) == 0):
+        print('None')
+    else:
+        for tuple in sensitive_leak:
+            print('Page: ' + tuple[0] + ' leaks sensitive data of ' + tuple[1])
+        print('Total: ' + str(len(sensitive_leak)))
+
+    print('Delayed Responses:')
+    print('*' * 40)
+    if (len(delayed) == 0):
+        print('None')
+    else:
+        for tuple in delayed:
+            print('Page: ' + tuple[0] + ' takes ' + tuple[1] + ' secs to load')
+        print('Total: ' + str(len(delayed)))
+
+    print('HTTP Response Codes:')
+    print('*' * 40)
+    if (len(http_errors) == 0):
+            print('None')
+    else:
+        for tuple in http_errors:
+            print(tuple[1] + ' => ' + tuple[2] + ' for ' + tuple[0])
+        print('Total: ' + str(len(http_errors)))
+
 def main():
     args = parse_arguments()
 
@@ -204,6 +379,9 @@ def main():
         dvwa_auth(args.url, browser)
     if args.command == 'discover':
         discover(args.url, browser, args)
+    if args.command == 'test':
+        discover(args.url, browser, args)
+        test(args, browser)
 
 if __name__ == '__main__':
     main()
