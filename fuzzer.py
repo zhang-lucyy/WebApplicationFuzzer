@@ -318,7 +318,7 @@ def test(args, browser):
 
                 # check for http errors
                 if page.status_code != 200:
-                    http_errors.add((page.url, page.status_code, get_status_code(page.status_code)))
+                    http_errors.add((page.url, str(page.status_code), get_status_code(page.status_code)))
 
                 # check for sensitive data
                 for data in sensitive:
