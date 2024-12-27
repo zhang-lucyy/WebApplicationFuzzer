@@ -1,7 +1,8 @@
 # Web Application Fuzzer
+Fall '24 - SWEN331 Engineering Secure Software
 
 ## Description
-For a Fall '24 class project in SWEN331, Engineering Secure Software. Developed using Python and the MechanicalSoup package, this fuzzer can identify vulnerabilities in web applications, specifically testing with the Damn Vulnerable Web Application (DVWA). Conducts page and input discovery, link crawling, and testing with fuzz vectors to detect vulnerabilites such as lack of sanitization and sensitive data leaks.
+Developed using Python and the MechanicalSoup package, this fuzzer can identify vulnerabilities in web applications, specifically testing with the Damn Vulnerable Web Application (DVWA). Conducts page and input discovery, link crawling, and testing with fuzz vectors to detect vulnerabilites such as lack of sanitization and sensitive data leaks.
 
 ## Installation
 1. Make sure you have python and dvwa installed.
